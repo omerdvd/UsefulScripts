@@ -13,6 +13,9 @@ set -euo pipefail
 # CONFIGURATION — edit these before running
 # -----------------------------------------------------------------------------
 read -rp "Enter the non-root username to create: " NEW_USER
+if [[ -z "${NEW_USER:-}" ]]; then
+    read -rp "Enter the non-root username to create: " NEW_USER
+fi
 if [[ -z "${NEW_USER}" ]]; then
     echo "ERROR: Username cannot be empty." >&2
     exit 1
