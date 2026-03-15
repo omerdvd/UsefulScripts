@@ -12,7 +12,11 @@ set -euo pipefail
 # -----------------------------------------------------------------------------
 # CONFIGURATION — edit these before running
 # -----------------------------------------------------------------------------
-NEW_USER="deploy"                  # Non-root sudo user to create
+read -rp "Enter the non-root username to create: " NEW_USER
+if [[ -z "${NEW_USER}" ]]; then
+    echo "ERROR: Username cannot be empty." >&2
+    exit 1
+fi
 SSH_PORT="22"                      # SSH port to expose
 ADDRESS_FAMILY="any"               # inet | inet6 | any
 PERMIT_ROOT_LOGIN="no"             # yes | no | prohibit-password
@@ -32,7 +36,7 @@ apt update
 echo "==> [2/5] Configuring UFW firewall..."
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow proto tcp from any to any port 80,443
+#ufw allow proto tcp from any to any port 80,443
 ufw allow "${SSH_PORT}/tcp"
 ufw --force enable
 
