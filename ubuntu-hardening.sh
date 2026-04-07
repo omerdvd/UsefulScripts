@@ -5,7 +5,7 @@
 #  Must be run as root.
 #
 #  Usage (from GitHub):
-#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/ManagedBlockList/main/ubuntu-hardening.sh)
+#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-hardening.sh)
 # ══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
