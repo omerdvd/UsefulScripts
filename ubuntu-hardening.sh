@@ -68,10 +68,12 @@ fi
 # Logging — tee all output (stdout + stderr) to a timestamped log file
 # ─────────────────────────────────────────────────────────────────────────────
 LOG_FILE="/tmp/ubuntu-hardening-$(date +%Y%m%d-%H%M%S).log"
+# Write the opening line directly to both terminal and log — avoids the tee
+# subprocess race condition where early output is dropped
+echo "Logging to: $LOG_FILE" | tee "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
+# All subsequent output goes through tee (append mode — file already exists)
 exec > >(tee -a "$LOG_FILE") 2>&1
-sleep 0.1  # allow tee subprocess to start before any output is written
-echo "Logging to: $LOG_FILE"
-echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Banner
@@ -551,7 +553,7 @@ kernel.kptr_restrict = 2
 kernel.dmesg_restrict = 1
 EOF
 
-sysctl -p "$SYSCTL_CONF" > /dev/null
+sysctl -e -p "$SYSCTL_CONF" > /dev/null
 success "sysctl network hardening applied from $SYSCTL_CONF"
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -584,7 +586,19 @@ success "Timezone set to: $(timedatectl show --property=Timezone --value)"
 # ══════════════════════════════════════════════════════════════════════════════
 header "SECTION 13 — fastfetch"
 
-apt-get install -y -qq fastfetch
+apt-get install -y -qq fastfetch 2>/dev/null || {
+    info "fastfetch not in apt repos — downloading latest release from GitHub..."
+    FASTFETCH_URL=$(curl -fsSL https://api.github.com/repos/fastfetch-cli/fastfetch/releases/latest \
+        | grep "browser_download_url" \
+        | grep "linux-amd64.deb" \
+        | cut -d'"' -f4)
+    if [[ -z "$FASTFETCH_URL" ]]; then
+        error "Could not find fastfetch download URL. Check your internet connection and try again."
+    fi
+    curl -fsSL "$FASTFETCH_URL" -o /tmp/fastfetch.deb
+    dpkg -i /tmp/fastfetch.deb > /dev/null
+    rm -f /tmp/fastfetch.deb
+}
 success "fastfetch installed."
 
 # Add fastfetch to /etc/skel/.bashrc so all future users get it automatically
