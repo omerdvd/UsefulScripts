@@ -292,7 +292,7 @@ LogLevel VERBOSE
 # ── Authentication ────────────────────────────────────────────────────────────
 LoginGraceTime 1m
 PermitRootLogin no
-MaxAuthTries 3
+MaxAuthTries 6
 MaxSessions 2
 
 # Public key authentication
@@ -329,9 +329,20 @@ UsePAM yes
 Subsystem sftp /usr/lib/openssh/sftp-server
 
 # ── Authentication chain ──────────────────────────────────────────────────────
-# Require SSH public key FIRST, then Google Authenticator TOTP code
-AuthenticationMethods publickey,keyboard-interactive
 EOF
+
+# If GA was configured now, require pubkey + TOTP.
+# If GA setup was deferred, use pubkey-only so the user can SSH in to run
+# google-authenticator — they must manually enable the full chain afterwards.
+if [[ "$GA_CHOICE" == "1" ]]; then
+    echo "# Require SSH public key FIRST, then Google Authenticator TOTP code" >> /etc/ssh/sshd_config
+    echo "AuthenticationMethods publickey,keyboard-interactive" >> /etc/ssh/sshd_config
+else
+    echo "# TOTP not yet configured — pubkey only until google-authenticator is set up." >> /etc/ssh/sshd_config
+    echo "# After running 'google-authenticator' as $NEW_USER, change this line to:" >> /etc/ssh/sshd_config
+    echo "#   AuthenticationMethods publickey,keyboard-interactive" >> /etc/ssh/sshd_config
+    echo "AuthenticationMethods publickey" >> /etc/ssh/sshd_config
+fi
 
 # /run/sshd must exist for sshd -t to pass on fresh installs
 # (the directory is normally created when sshd starts for the first time)
@@ -539,8 +550,18 @@ echo "  3. Enter your TOTP code when prompted"
 echo "  4. Run: sudo whoami  (should return 'root')"
 if [[ "$GA_CHOICE" == "2" ]]; then
     echo ""
-    echo -e "  ${YELLOW}2FA not yet configured. Run this as $NEW_USER to enable it:${NC}"
-    echo -e "    ${CYAN}google-authenticator${NC}"
+    echo -e "  ${YELLOW}⚠  2FA deferred — SSH currently uses pubkey only.${NC}"
+    echo -e "  ${YELLOW}   To enable full pubkey + TOTP protection:${NC}"
+    echo ""
+    echo "     Step 1 — SSH in and set up Google Authenticator:"
+    echo "       ssh -p $SSH_PORT $NEW_USER@$SERVER_IP"
+    echo "       google-authenticator"
+    echo ""
+    echo "     Step 2 — Enable the full auth chain on the server:"
+    echo "       sudo sed -i 's/^AuthenticationMethods publickey$/AuthenticationMethods publickey,keyboard-interactive/' /etc/ssh/sshd_config"
+    echo "       sudo systemctl restart ssh"
+    echo ""
+    echo -e "  ${RED}  Do NOT close your session before confirming SSH still works after Step 2.${NC}"
 fi
 echo ""
 echo -e "  ${RED}Only close this session after you confirm SSH login works.${NC}"
