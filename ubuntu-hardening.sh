@@ -333,6 +333,10 @@ Subsystem sftp /usr/lib/openssh/sftp-server
 AuthenticationMethods publickey,keyboard-interactive
 EOF
 
+# /run/sshd must exist for sshd -t to pass on fresh installs
+# (the directory is normally created when sshd starts for the first time)
+mkdir -p /run/sshd
+
 # Verify config before restarting
 if sshd -t; then
     success "sshd_config syntax is valid."
