@@ -5,7 +5,7 @@
 #  Must be run as root.
 #
 #  Usage (from GitHub):
-#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-hardening.sh)
+#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/ManagedBlockList/main/ubuntu-hardening.sh)
 # ══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -54,6 +54,14 @@ yes_no() {
 [[ $EUID -ne 0 ]] && error "This script must be run as root. Try: sudo bash <script>"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Logging — tee all output (stdout + stderr) to a timestamped log file
+# ─────────────────────────────────────────────────────────────────────────────
+LOG_FILE="/tmp/ubuntu-hardening-$(date +%Y%m%d-%H%M%S).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo "Logging to: $LOG_FILE"
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Banner
 # ─────────────────────────────────────────────────────────────────────────────
 clear
@@ -78,6 +86,9 @@ echo "    6.  Install fail2ban"
 echo "    7.  Enable automatic security updates"
 echo "    8.  Apply sysctl network hardening"
 echo "    9.  Set idle session timeout (10 minutes)"
+echo "    10. Set server timezone"
+echo "    11. Suppress login banner (hushlogin)"
+echo "    12. Install neofetch"
 echo ""
 echo -e "  ${RED}Run this on a fresh installation only.${NC}"
 echo -e "  ${RED}Keep your current session open until you confirm SSH works.${NC}"
@@ -157,7 +168,44 @@ while true; do
     esac
 done
 
-# ── Hardcoded settings ────────────────────────────────────────────────────────
+# ── Timezone ──────────────────────────────────────────────────────────────────
+echo ""
+info "Current server timezone: $(timedatectl show --property=Timezone --value)"
+info "Type part of a timezone name to search (e.g. 'Jerusalem', 'New_York', 'UTC', 'London')."
+while true; do
+    read -rp "$(echo -e "${CYAN}[INPUT]${NC} Timezone search: ")" TZ_SEARCH
+    if [[ -z "$TZ_SEARCH" ]]; then
+        warn "Search term cannot be empty."
+        continue
+    fi
+    # Find matching timezones (case-insensitive)
+    mapfile -t TZ_MATCHES < <(timedatectl list-timezones | grep -i "$TZ_SEARCH")
+    if [[ ${#TZ_MATCHES[@]} -eq 0 ]]; then
+        warn "No timezones matched '$TZ_SEARCH'. Try again (e.g. 'Asia/Jerusalem' or just 'Jerusalem')."
+    elif [[ ${#TZ_MATCHES[@]} -eq 1 ]]; then
+        TIMEZONE="${TZ_MATCHES[0]}"
+        info "Found: $TIMEZONE"
+        yes_no "Use $TIMEZONE?" && break || true
+    else
+        echo ""
+        info "Multiple matches — pick one:"
+        for i in "${!TZ_MATCHES[@]}"; do
+            echo "    $((i+1))) ${TZ_MATCHES[$i]}"
+        done
+        echo ""
+        while true; do
+            read -rp "$(echo -e "${CYAN}[INPUT]${NC} Enter number [1-${#TZ_MATCHES[@]}]: ")" TZ_NUM
+            if [[ "$TZ_NUM" =~ ^[0-9]+$ ]] && (( TZ_NUM >= 1 && TZ_NUM <= ${#TZ_MATCHES[@]} )); then
+                TIMEZONE="${TZ_MATCHES[$((TZ_NUM-1))]}"
+                break
+            fi
+            warn "Invalid choice."
+        done
+        break
+    fi
+done
+
+
 IDLE_MINUTES=10
 
 # ── Summary before applying ───────────────────────────────────────────────────
@@ -165,6 +213,7 @@ echo ""
 header "Configuration Summary"
 echo -e "  Username:              ${BOLD}$NEW_USER${NC}"
 echo -e "  SSH port:              ${BOLD}$SSH_PORT${NC}"
+echo -e "  Timezone:              ${BOLD}$TIMEZONE${NC}"
 echo -e "  Google Auth (2FA):     ${BOLD}$([ "$GA_CHOICE" = "1" ] && echo "Configure now" || echo "Configure later")${NC}"
 echo -e "  fail2ban:              ${BOLD}Yes${NC}"
 echo -e "  Auto security updates: ${BOLD}Yes${NC}"
@@ -202,6 +251,12 @@ success "Password set for $NEW_USER."
 
 usermod -aG sudo "$NEW_USER"
 success "User $NEW_USER added to the sudo group."
+
+# Suppress the default Ubuntu login message for both root and the new user
+touch /root/.hushlogin
+touch "/home/$NEW_USER/.hushlogin"
+chown "$NEW_USER:$NEW_USER" "/home/$NEW_USER/.hushlogin"
+success "Login banner suppressed for root and $NEW_USER (hushlogin)."
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  SECTION 4 — SSH Key Setup
@@ -505,9 +560,49 @@ chmod 644 /etc/profile.d/idle-timeout.sh
 success "Idle timeout set: sessions will be disconnected after ${IDLE_MINUTES} minutes of inactivity."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 12 — Restart SSH
+#  SECTION 13 — Timezone
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 12 — Restarting SSH"
+header "SECTION 12 — Timezone"
+
+timedatectl set-timezone "$TIMEZONE"
+success "Timezone set to: $(timedatectl show --property=Timezone --value)"
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 13 — neofetch
+# ══════════════════════════════════════════════════════════════════════════════
+header "SECTION 13 — neofetch"
+
+apt-get install -y -qq neofetch
+success "neofetch installed."
+
+# Add neofetch to /etc/skel/.bashrc so all future users get it automatically
+NEOFETCH_LINE="neofetch  # added by ubuntu-hardening.sh"
+SKEL_BASHRC="/etc/skel/.bashrc"
+if ! grep -q "neofetch" "$SKEL_BASHRC" 2>/dev/null; then
+    echo "" >> "$SKEL_BASHRC"
+    echo "$NEOFETCH_LINE" >> "$SKEL_BASHRC"
+fi
+
+# Add to root's .bashrc
+ROOT_BASHRC="/root/.bashrc"
+if ! grep -q "neofetch" "$ROOT_BASHRC" 2>/dev/null; then
+    echo "" >> "$ROOT_BASHRC"
+    echo "$NEOFETCH_LINE" >> "$ROOT_BASHRC"
+fi
+
+# Add to the new user's .bashrc
+USER_BASHRC="/home/$NEW_USER/.bashrc"
+if ! grep -q "neofetch" "$USER_BASHRC" 2>/dev/null; then
+    echo "" >> "$USER_BASHRC"
+    echo "$NEOFETCH_LINE" >> "$USER_BASHRC"
+fi
+
+success "neofetch added to .bashrc for root, $NEW_USER, and all future users."
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 14 — Restart SSH
+# ══════════════════════════════════════════════════════════════════════════════
+header "SECTION 14 — Restarting SSH"
 
 if sshd -t; then
     systemctl restart ssh
@@ -536,6 +631,9 @@ echo -e "  ${BOLD}fail2ban:${NC}              Active"
 echo -e "  ${BOLD}Auto security updates:${NC} Active"
 echo -e "  ${BOLD}sysctl hardening:${NC}      Applied"
 echo -e "  ${BOLD}Idle timeout:${NC}          ${IDLE_MINUTES} minutes"
+echo -e "  ${BOLD}Timezone:${NC}              $TIMEZONE"
+echo -e "  ${BOLD}Login banner:${NC}          Suppressed (hushlogin)"
+echo -e "  ${BOLD}neofetch:${NC}              Installed"
 echo ""
 echo -e "  ${BOLD}SSH command to connect:${NC}"
 echo -e "    ${CYAN}ssh -p $SSH_PORT $NEW_USER@$SERVER_IP${NC}"
@@ -565,4 +663,7 @@ if [[ "$GA_CHOICE" == "2" ]]; then
 fi
 echo ""
 echo -e "  ${RED}Only close this session after you confirm SSH login works.${NC}"
+echo ""
+echo -e "  ${BOLD}Full run log saved to:${NC}"
+echo -e "    ${CYAN}$LOG_FILE${NC}"
 echo ""
