@@ -87,7 +87,8 @@ cat <<'BANNER'
   ██║   ██║██╔══██╗██║   ██║██║╚██╗██║   ██║   ██║   ██║
   ╚██████╔╝██████╔╝╚██████╔╝██║ ╚████║   ██║   ╚██████╔╝
    ╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝   ╚═╝    ╚═════╝
-         Ubuntu Server Hardening Script by omerdvd
+      Ubuntu Server Hardening Script by Omer David
+ Contact me at: 42729996+omerdvd@users.noreply.github.com
 BANNER
 echo -e "${NC}"
 echo "  This script will:"
