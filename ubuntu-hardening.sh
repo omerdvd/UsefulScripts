@@ -5,10 +5,10 @@
 #  Must be run as root.
 #
 #  Usage (from GitHub — fresh server, curl may not be installed yet):
-#    apt-get update -qq && apt-get install -y -qq curl && bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-hardening.sh)
+#    apt-get update -qq && apt-get install -y -qq curl && bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/ManagedBlockList/main/ubuntu-hardening.sh)
 #
 #  Usage (if curl is already installed):
-#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-hardening.sh)
+#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/ManagedBlockList/main/ubuntu-hardening.sh)
 # ══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -87,8 +87,7 @@ cat <<'BANNER'
   ██║   ██║██╔══██╗██║   ██║██║╚██╗██║   ██║   ██║   ██║
   ╚██████╔╝██████╔╝╚██████╔╝██║ ╚████║   ██║   ╚██████╔╝
    ╚═════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝   ╚═╝    ╚═════╝
-      Ubuntu Server Hardening Script by Omer David
- Contact me at: 42729996+omerdvd@users.noreply.github.com
+         Ubuntu Server Hardening Script by omerdvd
 BANNER
 echo -e "${NC}"
 echo "  This script will:"
@@ -104,6 +103,7 @@ echo "    9.  Set idle session timeout (10 minutes)"
 echo "    10. Set server timezone"
 echo "    11. Suppress login banner (hushlogin)"
 echo "    12. Install fastfetch"
+echo "    13. Create update.sh maintenance script"
 echo ""
 echo -e "  ${RED}Run this on a fresh installation only.${NC}"
 echo -e "  ${RED}Keep your current session open until you confirm SSH works.${NC}"
@@ -627,9 +627,67 @@ fi
 success "fastfetch added to .bashrc for root, $NEW_USER, and all future users."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 14 — Restart SSH
+#  SECTION 14 — update.sh maintenance script
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 14 — Restarting SSH"
+header "SECTION 14 — update.sh"
+
+UPDATE_SCRIPT="/home/$NEW_USER/update.sh"
+
+cat > "$UPDATE_SCRIPT" <<'EOF'
+#!/bin/bash
+
+# Colors
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+LOGFILE="$HOME/update.log"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}  System Update - $TIMESTAMP${NC}"
+echo -e "${GREEN}========================================${NC}"
+
+echo "" | tee -a "$LOGFILE"
+echo "=== Update run: $TIMESTAMP ===" | tee -a "$LOGFILE"
+
+echo -e "\n${YELLOW}[1/3] Fetching package lists...${NC}"
+sudo apt update 2>&1 | tee -a "$LOGFILE"
+
+# Count upgradable packages
+UPGRADABLE=$(apt list --upgradable 2>/dev/null | grep -c upgradable)
+
+if [ "$UPGRADABLE" -eq 0 ]; then
+    echo -e "\n${GREEN}Everything is up to date!${NC}"
+else
+    echo -e "\n${YELLOW}[2/3] Upgrading $UPGRADABLE package(s)...${NC}"
+    sudo apt full-upgrade -y 2>&1 | tee -a "$LOGFILE"
+fi
+
+echo -e "\n${YELLOW}[3/3] Removing unused packages...${NC}"
+sudo apt autoremove -y 2>&1 | tee -a "$LOGFILE"
+
+# Reboot check
+if [ -f /var/run/reboot-required ]; then
+    echo -e "\n${RED}⚠  Reboot required to apply updates!${NC}"
+else
+    echo -e "\n${GREEN}✔  No reboot required.${NC}"
+fi
+
+echo -e "\n${GREEN}Done! Log saved to $LOGFILE${NC}"
+EOF
+
+# -rwxr--r-- = 744
+chmod 744 "$UPDATE_SCRIPT"
+chown "$NEW_USER:$NEW_USER" "$UPDATE_SCRIPT"
+success "update.sh created at $UPDATE_SCRIPT"
+success "Permissions set: -rwxr--r-- (744)"
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 15 — Restart SSH
+# ══════════════════════════════════════════════════════════════════════════════
+header "SECTION 15 — Restarting SSH"
 
 if sshd -t; then
     systemctl restart ssh
@@ -661,6 +719,7 @@ echo -e "  ${BOLD}Idle timeout:${NC}          ${IDLE_MINUTES} minutes"
 echo -e "  ${BOLD}Timezone:${NC}              $TIMEZONE"
 echo -e "  ${BOLD}Login banner:${NC}          Suppressed (hushlogin)"
 echo -e "  ${BOLD}fastfetch:${NC}             Installed"
+echo -e "  ${BOLD}update.sh:${NC}             /home/$NEW_USER/update.sh (chmod 744)"
 echo ""
 echo -e "  ${BOLD}SSH command to connect:${NC}"
 echo -e "    ${CYAN}ssh -p $SSH_PORT $NEW_USER@$SERVER_IP${NC}"
