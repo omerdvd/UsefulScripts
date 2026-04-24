@@ -4,7 +4,7 @@
 #  Initial security hardening for a fresh Ubuntu server installation.
 #  Must be run as root.
 #
-#  Usage:
+#  Usage — wget is pre-installed on Ubuntu Server, no setup needed:
 #    bash <(wget -qO- https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-hardening.sh)
 #
 #
@@ -80,6 +80,11 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 # Banner
 # ─────────────────────────────────────────────────────────────────────────────
 clear
+
+# Fetch IPs before drawing the banner
+PRIVATE_IP=$(hostname -I | awk '{print $1}')
+PUBLIC_IP=$(curl -fsSL --max-time 5 https://api.ipify.org 2>/dev/null || echo "unavailable")
+
 echo -e "${BOLD}${CYAN}"
 cat <<'BANNER'
   ██╗   ██╗██████╗ ██╗   ██╗███╗   ██╗████████╗██╗   ██╗
@@ -91,6 +96,10 @@ cat <<'BANNER'
          Ubuntu Server Hardening Script by omerdvd
 BANNER
 echo -e "${NC}"
+# Display IPs — white text on red background
+echo -e "  \033[1;37;41m  Private IP : ${PRIVATE_IP}  \033[0m"
+echo -e "  \033[1;37;41m  Public IP  : ${PUBLIC_IP}  \033[0m"
+echo ""
 echo "  This script will:"
 echo "    1.  Create a non-privileged sudo user"
 echo "    2.  Apply all system updates"
@@ -164,13 +173,17 @@ fi
 
 # ── SSH Port ──────────────────────────────────────────────────────────────────
 echo ""
-read -rp "$(echo -e "${CYAN}[INPUT]${NC} SSH port [press ENTER for default: 22]: ")" SSH_PORT
-SSH_PORT=${SSH_PORT:-22}
-if ! [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || (( SSH_PORT < 1 || SSH_PORT > 65535 )); then
-    error "Invalid port: $SSH_PORT"
-fi
-if [[ "$SSH_PORT" == "22" ]]; then
-    warn "Port 22 is the default — consider a non-standard port (e.g. 2222) to reduce automated scans."
+read -rp "$(echo -e "${CYAN}[INPUT]${NC} SSH port [ENTER to keep default port 22]: ")" SSH_PORT
+if [[ -z "$SSH_PORT" ]]; then
+    SSH_PORT=22
+    info "Keeping default SSH port 22."
+else
+    if ! [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || (( SSH_PORT < 1 || SSH_PORT > 65535 )); then
+        error "Invalid port: $SSH_PORT"
+    fi
+    if [[ "$SSH_PORT" == "22" ]]; then
+        warn "Port 22 is the default — consider a non-standard port (e.g. 2222) to reduce automated scans on public servers."
+    fi
 fi
 
 # ── Google Authenticator timing ───────────────────────────────────────────────
@@ -227,10 +240,10 @@ done
 # ── Hostname ──────────────────────────────────────────────────────────────────
 echo ""
 info "Current hostname: $(hostname)"
-info "Leave blank to keep the current hostname."
 while true; do
-    read -rp "$(echo -e "${CYAN}[INPUT]${NC} New hostname (or ENTER to skip): ")" NEW_HOSTNAME
+    read -rp "$(echo -e "${CYAN}[INPUT]${NC} New hostname [ENTER to keep '$(hostname)']: ")" NEW_HOSTNAME
     if [[ -z "$NEW_HOSTNAME" ]]; then
+        info "Keeping current hostname: $(hostname)"
         break
     elif [[ ${#NEW_HOSTNAME} -gt 63 ]]; then
         warn "Hostname must be 63 characters or fewer."
