@@ -5,11 +5,11 @@
 #  Must be run as root.
 #
 #  Usage:
-#    bash <(wget -qO- https://raw.githubusercontent.com/omerdvd/ManagedBlockList/main/ubuntu-hardening.sh)
+#    bash <(wget -qO- https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-hardening.sh)
 #
 #
 #  Alternative (if curl is already installed):
-#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/ManagedBlockList/main/ubuntu-hardening.sh)
+#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-hardening.sh)
 # ══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
