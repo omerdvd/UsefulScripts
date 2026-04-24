@@ -13,13 +13,6 @@
 #  Alternative (if curl is already installed):
 #    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/ManagedBlockList/main/ubuntu-hardening.sh)
 # ══════════════════════════════════════════════════════════════════════════════
-# OLD USAGE:
-#  Usage (from GitHub — fresh server, curl may not be installed yet):
-#    apt-get update -qq && apt-get install -y -qq curl && bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/ManagedBlockList/main/ubuntu-hardening.sh)
-#
-#  Usage (if curl is already installed):
-#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/ManagedBlockList/main/ubuntu-hardening.sh)
-# ══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 
@@ -114,6 +107,8 @@ echo "    10. Set server timezone"
 echo "    11. Suppress login banner (hushlogin)"
 echo "    12. Install fastfetch"
 echo "    13. Create update.sh maintenance script"
+echo "    14. Set server hostname"
+echo "    15. Install lnav log viewer"
 echo ""
 echo -e "  ${RED}Run this on a fresh installation only.${NC}"
 echo -e "  ${RED}Keep your current session open until you confirm SSH works.${NC}"
@@ -230,6 +225,22 @@ while true; do
     fi
 done
 
+# ── Hostname ──────────────────────────────────────────────────────────────────
+echo ""
+info "Current hostname: $(hostname)"
+info "Leave blank to keep the current hostname."
+while true; do
+    read -rp "$(echo -e "${CYAN}[INPUT]${NC} New hostname (or ENTER to skip): ")" NEW_HOSTNAME
+    if [[ -z "$NEW_HOSTNAME" ]]; then
+        break
+    elif [[ ${#NEW_HOSTNAME} -gt 63 ]]; then
+        warn "Hostname must be 63 characters or fewer."
+    elif [[ ! "$NEW_HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$ ]]; then
+        warn "Hostname may only contain letters, numbers, and hyphens, and cannot start or end with a hyphen."
+    else
+        break
+    fi
+done
 
 IDLE_MINUTES=10
 
@@ -239,6 +250,7 @@ header "Configuration Summary"
 echo -e "  Username:              ${BOLD}$NEW_USER${NC}"
 echo -e "  SSH port:              ${BOLD}$SSH_PORT${NC}"
 echo -e "  Timezone:              ${BOLD}$TIMEZONE${NC}"
+echo -e "  Hostname:              ${BOLD}${NEW_HOSTNAME:-$(hostname) (unchanged)}${NC}"
 echo -e "  Google Auth (2FA):     ${BOLD}$([ "$GA_CHOICE" = "1" ] && echo "Configure now" || echo "Configure later")${NC}"
 echo -e "  fail2ban:              ${BOLD}Yes${NC}"
 echo -e "  Auto security updates: ${BOLD}Yes${NC}"
@@ -695,9 +707,36 @@ success "update.sh created at $UPDATE_SCRIPT"
 success "Permissions set: -rwxr--r-- (744)"
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 15 — Restart SSH
+#  SECTION 15 — Hostname
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 15 — Restarting SSH"
+header "SECTION 15 — Hostname"
+
+if [[ -n "$NEW_HOSTNAME" ]]; then
+    OLD_HOSTNAME=$(hostname)
+    hostnamectl set-hostname "$NEW_HOSTNAME"
+    # Update /etc/hosts so the new hostname resolves locally
+    sed -i "s/127\.0\.1\.1\s.*/127.0.1.1\t$NEW_HOSTNAME/" /etc/hosts
+    # If no 127.0.1.1 line exists yet, add one
+    if ! grep -q "127.0.1.1" /etc/hosts; then
+        echo -e "127.0.1.1\t$NEW_HOSTNAME" >> /etc/hosts
+    fi
+    success "Hostname changed: $OLD_HOSTNAME → $NEW_HOSTNAME"
+else
+    info "Hostname unchanged: $(hostname)"
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 16 — lnav
+# ══════════════════════════════════════════════════════════════════════════════
+header "SECTION 16 — lnav log viewer"
+
+apt-get install -y -qq lnav
+success "lnav installed. Use 'lnav <logfile>' to browse logs interactively."
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 17 — Restart SSH
+# ══════════════════════════════════════════════════════════════════════════════
+header "SECTION 17 — Restarting SSH"
 
 if sshd -t; then
     systemctl restart ssh
@@ -727,8 +766,10 @@ echo -e "  ${BOLD}Auto security updates:${NC} Active"
 echo -e "  ${BOLD}sysctl hardening:${NC}      Applied"
 echo -e "  ${BOLD}Idle timeout:${NC}          ${IDLE_MINUTES} minutes"
 echo -e "  ${BOLD}Timezone:${NC}              $TIMEZONE"
+echo -e "  ${BOLD}Hostname:${NC}              $([ -n "$NEW_HOSTNAME" ] && echo "$NEW_HOSTNAME" || echo "$(hostname) (unchanged)")"
 echo -e "  ${BOLD}Login banner:${NC}          Suppressed (hushlogin)"
 echo -e "  ${BOLD}fastfetch:${NC}             Installed"
+echo -e "  ${BOLD}lnav:${NC}                  Installed"
 echo -e "  ${BOLD}update.sh:${NC}             /home/$NEW_USER/update.sh (chmod 744)"
 echo ""
 echo -e "  ${BOLD}SSH command to connect:${NC}"
