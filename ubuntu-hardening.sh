@@ -4,11 +4,9 @@
 #  Initial security hardening for a fresh Ubuntu server installation.
 #  Must be run as root.
 #
-#  Usage — wget is pre-installed on Ubuntu Server, no setup needed:
+#  Usage:
 #    bash <(wget -qO- https://raw.githubusercontent.com/omerdvd/ManagedBlockList/main/ubuntu-hardening.sh)
 #
-#  NOTE: Do NOT use "wget ... | bash" — piping breaks the interactive prompts.
-#        Always use bash <(...) process substitution.
 #
 #  Alternative (if curl is already installed):
 #    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/ManagedBlockList/main/ubuntu-hardening.sh)
