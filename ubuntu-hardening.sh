@@ -109,6 +109,7 @@ echo "    12. Install fastfetch"
 echo "    13. Create update.sh maintenance script"
 echo "    14. Set server hostname"
 echo "    15. Install lnav log viewer"
+echo "    16. Apply shell customisations (ls alias, extract function)"
 echo ""
 echo -e "  ${RED}Run this on a fresh installation only.${NC}"
 echo -e "  ${RED}Keep your current session open until you confirm SSH works.${NC}"
@@ -734,9 +735,54 @@ apt-get install -y -qq lnav
 success "lnav installed. Use 'lnav <logfile>' to browse logs interactively."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 17 — Restart SSH
+#  SECTION 17 — Shell customisations
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 17 — Restarting SSH"
+header "SECTION 17 — Shell customisations"
+
+SHELL_CUSTOM="/etc/profile.d/custom-shell.sh"
+
+cat > "$SHELL_CUSTOM" <<'EOF'
+# ══════════════════════════════════════════════════════════════════════════════
+#  /etc/profile.d/custom-shell.sh
+#  Applied to all users on every login — managed by ubuntu-hardening.sh
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── ls alias ──────────────────────────────────────────────────────────────────
+alias ls='/bin/ls -lahF --time-style=long-iso --color=auto --ignore=lost+found'
+
+# ── extract — universal archive extractor ─────────────────────────────────────
+function extract () {
+  if [ -f "$1" ] ; then
+    case $1 in
+      *.tar.bz2)   tar xjvf "$1"    ;;
+      *.tar.gz)    tar xzvf "$1"    ;;
+      *.tar.xz)    tar xvf  "$1"    ;;
+      *.bz2)       bzip2 -d "$1"    ;;
+      *.rar)       unrar2dir "$1"   ;;
+      *.gz)        gunzip "$1"      ;;
+      *.tar)       tar xf "$1"      ;;
+      *.tbz2)      tar xjf "$1"     ;;
+      *.tgz)       tar xzf "$1"     ;;
+      *.zip)       unzip2dir "$1"   ;;
+      *.Z)         uncompress "$1"  ;;
+      *.7z)        7z x "$1"        ;;
+      *.ace)       unace x "$1"     ;;
+      *)           echo "'$1' cannot be extracted via extract()" ;;
+    esac
+  else
+    echo "'$1' is not a valid file"
+  fi
+}
+EOF
+
+chmod 644 "$SHELL_CUSTOM"
+success "Shell customisations written to $SHELL_CUSTOM"
+success "ls alias and extract() function active for all users on next login."
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 18 — Restart SSH
+# ══════════════════════════════════════════════════════════════════════════════
+header "SECTION 18 — Restarting SSH"
 
 if sshd -t; then
     systemctl restart ssh
@@ -770,6 +816,7 @@ echo -e "  ${BOLD}Hostname:${NC}              $([ -n "$NEW_HOSTNAME" ] && echo "
 echo -e "  ${BOLD}Login banner:${NC}          Suppressed (hushlogin)"
 echo -e "  ${BOLD}fastfetch:${NC}             Installed"
 echo -e "  ${BOLD}lnav:${NC}                  Installed"
+echo -e "  ${BOLD}Shell customisations:${NC}  ls alias + extract() → /etc/profile.d/custom-shell.sh"
 echo -e "  ${BOLD}update.sh:${NC}             /home/$NEW_USER/update.sh (chmod 744)"
 echo ""
 echo -e "  ${BOLD}SSH command to connect:${NC}"
