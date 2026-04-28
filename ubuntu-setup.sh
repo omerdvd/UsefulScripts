@@ -5,7 +5,7 @@
 #  Must be run as root.
 #
 #  Usage — wget is pre-installed on Ubuntu Server, no setup needed:
-#    bash <(wget -qO- https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-setup.sh.sh)
+#    bash <(wget -qO- https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-setup.sh)
 #
 #
 #  Alternative (if curl is already installed):
@@ -116,7 +116,8 @@ echo "    12. Install fastfetch"
 echo "    13. Create update.sh maintenance script"
 echo "    14. Set server hostname"
 echo "    15. Install lnav log viewer"
-echo "    16. Apply shell customisations (ls alias, extract function, fzf, bat)"
+echo "    16. Apply shell customisations (ls alias, cd, extract function, fzf, bat)"
+echo "    17. Install lynis security auditing tool"
 echo ""
 echo -e "  ${RED}Run this on a fresh installation only.${NC}"
 echo -e "  ${RED}Keep your current session open until you confirm SSH works.${NC}"
@@ -811,22 +812,52 @@ function extract () {
     echo "'\$1' is not a valid file"
   fi
 }
+
+# ── cd — show directory listing after every cd ────────────────────────────────
+function cd() {
+    new_directory="\$*";
+    if [ \$# -eq 0 ]; then
+        new_directory=\${HOME};
+    fi;
+    builtin cd "\${new_directory}" && /bin/ls -lhF --time-style=long-iso --color=auto --ignore=lost+found
+}
 EOF
 
 chmod 644 "$SHELL_CUSTOM"
 success "Shell customisations written to $SHELL_CUSTOM"
-success "ls alias, cat→bat alias, fzf, and extract() active for all users on next login."
+success "ls alias, cat→bat alias, fzf, cd function, extract() active for all users on next login."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 18 — Restart SSH
+#  SECTION 18 — lynis
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 18 — Restarting SSH"
+header "SECTION 18 — lynis security auditing"
+
+apt-get install -y -qq lynis
+success "lynis installed. Run 'sudo lynis audit system' at any time for a full security audit."
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 19 — Restart SSH
+# ══════════════════════════════════════════════════════════════════════════════
+header "SECTION 19 — Restarting SSH"
 
 if sshd -t; then
     systemctl restart ssh
     success "SSH service restarted successfully."
 else
     error "sshd_config test failed — SSH was NOT restarted. Check the config manually."
+fi
+
+# ── Optional: run initial lynis scan ─────────────────────────────────────────
+echo ""
+if yes_no "Run an initial lynis security audit now? (takes ~1-2 minutes)"; then
+    header "lynis — Initial Security Audit"
+    info "Running lynis audit... results will appear below and in the log file."
+    echo ""
+    lynis audit system --quiet
+    echo ""
+    success "lynis audit complete."
+    info "Full report: /var/log/lynis-report.dat"
+    info "Full log:    /var/log/lynis.log"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -854,7 +885,8 @@ echo -e "  ${BOLD}Hostname:${NC}              $([ -n "$NEW_HOSTNAME" ] && echo "
 echo -e "  ${BOLD}Login banner:${NC}          Suppressed (hushlogin)"
 echo -e "  ${BOLD}fastfetch:${NC}             Installed"
 echo -e "  ${BOLD}lnav:${NC}                  Installed"
-echo -e "  ${BOLD}Shell customisations:${NC}  ls alias, cat→$BAT_CMD, fzf, extract() → /etc/profile.d/custom-shell.sh"
+echo -e "  ${BOLD}Shell customisations:${NC}  ls alias, cat→$BAT_CMD, fzf, cd function, extract() → /etc/profile.d/custom-shell.sh"
+echo -e "  ${BOLD}lynis:${NC}                 Installed (run: sudo lynis audit system)"
 echo -e "  ${BOLD}update.sh:${NC}             /home/$NEW_USER/update.sh (chmod 744)"
 echo ""
 echo -e "  ${BOLD}SSH command to connect:${NC}"
