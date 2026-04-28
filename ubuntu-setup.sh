@@ -831,14 +831,18 @@ header "SECTION 19 — Hostname"
 
 if [[ -n "$NEW_HOSTNAME" ]]; then
     OLD_HOSTNAME=$(hostname)
-    hostnamectl set-hostname "$NEW_HOSTNAME"
+    # Write directly to /etc/hostname — ensures persistence across reboots
+    # on all environments including LXC containers where hostnamectl alone
+    # may not survive a reboot
+    echo "$NEW_HOSTNAME" > /etc/hostname
+    hostnamectl set-hostname "$NEW_HOSTNAME" 2>/dev/null || true
     # Update /etc/hosts so the new hostname resolves locally
     sed -i "s/127\.0\.1\.1\s.*/127.0.1.1\t$NEW_HOSTNAME/" /etc/hosts
     # If no 127.0.1.1 line exists yet, add one
     if ! grep -q "127.0.1.1" /etc/hosts; then
         echo -e "127.0.1.1\t$NEW_HOSTNAME" >> /etc/hosts
     fi
-    success "Hostname changed: $OLD_HOSTNAME → $NEW_HOSTNAME"
+    success "Hostname changed: $OLD_HOSTNAME → $NEW_HOSTNAME (persists across reboots)"
 else
     info "Hostname unchanged: $(hostname)"
 fi
