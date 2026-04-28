@@ -103,21 +103,25 @@ echo ""
 echo "  This script will:"
 echo "    1.  Create a non-privileged sudo user"
 echo "    2.  Apply all system updates"
-echo "    3.  Harden SSH (key + Google Authenticator 2FA)"
-echo "    4.  Configure UFW firewall (SSH in only)"
-echo "    5.  Install Google Authenticator"
-echo "    6.  Install fail2ban"
-echo "    7.  Enable automatic security updates"
-echo "    8.  Apply sysctl network hardening"
-echo "    9.  Set idle session timeout (10 minutes)"
-echo "    10. Set server timezone"
-echo "    11. Suppress login banner (hushlogin)"
-echo "    12. Install fastfetch"
-echo "    13. Create update.sh maintenance script"
-echo "    14. Set server hostname"
-echo "    15. Install lnav log viewer"
-echo "    16. Apply shell customisations (ls alias, cd, extract function, fzf, bat)"
-echo "    17. Install lynis security auditing tool"
+echo "    3.  Install security packages (lynis recommendations)"
+echo "    4.  Harden SSH (key + Google Authenticator 2FA)"
+echo "    5.  Configure UFW firewall (SSH in only)"
+echo "    6.  Install Google Authenticator"
+echo "    7.  Install fail2ban"
+echo "    8.  Enable automatic security updates"
+echo "    9.  Apply sysctl network hardening"
+echo "    10. Apply system hardening (modules, core dumps, permissions)"
+echo "    11. Set idle session timeout (10 minutes)"
+echo "    12. Set server timezone"
+echo "    13. Add legal banners (/etc/issue)"
+echo "    14. Harden Postfix SMTP banner"
+echo "    15. Suppress login banner (hushlogin)"
+echo "    16. Install fastfetch"
+echo "    17. Create update.sh maintenance script"
+echo "    18. Set server hostname"
+echo "    19. Install lnav log viewer"
+echo "    20. Apply shell customisations (ls alias, cd, extract, fzf, bat)"
+echo "    21. Install lynis security auditing tool"
 echo ""
 echo -e "  ${RED}Run this on a fresh installation only.${NC}"
 echo -e "  ${RED}Keep your current session open until you confirm SSH works.${NC}"
@@ -285,9 +289,35 @@ DEBIAN_FRONTEND=noninteractive apt-get autoremove -y -qq
 success "System is fully updated."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 3 — Create User
+#  SECTION 3 — Security Packages
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 3 — User: $NEW_USER"
+header "SECTION 3 — Security Packages"
+
+info "Installing recommended security packages..."
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+    libpam-tmpdir \
+    apt-listbugs \
+    apt-listchanges \
+    needrestart \
+    debsums \
+    apt-show-versions \
+    libpam-pwquality \
+    acct
+success "Security packages installed."
+
+# Enable process accounting (audit trail of all commands run on the system)
+systemctl enable acct > /dev/null 2>&1 || true
+systemctl start  acct > /dev/null 2>&1 || true
+success "Process accounting (acct) enabled."
+
+# Stricter default umask: new files created as 640, directories as 750
+sed -i 's/^UMASK\s\+022/UMASK\t\t027/' /etc/login.defs
+success "Default umask set to 027 in /etc/login.defs."
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 4 — Create User
+# ══════════════════════════════════════════════════════════════════════════════
+header "SECTION 4 — User: $NEW_USER"
 
 if id "$NEW_USER" &>/dev/null; then
     warn "User $NEW_USER already exists. Skipping creation, updating password and groups."
@@ -311,7 +341,7 @@ success "Login banner suppressed for root and $NEW_USER (hushlogin)."
 # ══════════════════════════════════════════════════════════════════════════════
 #  SECTION 4 — SSH Key Setup
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 4 — SSH Key Setup"
+header "SECTION 5 — SSH Key Setup"
 
 SSH_DIR="/home/$NEW_USER/.ssh"
 AUTH_KEYS="$SSH_DIR/authorized_keys"
@@ -326,9 +356,9 @@ success "SSH public key added to $AUTH_KEYS"
 success "Permissions set: .ssh/ = 700, authorized_keys = 600"
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 5 — Google Authenticator
+#  SECTION 6 — Google Authenticator
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 5 — Google Authenticator"
+header "SECTION 6 — Google Authenticator"
 apt-get install -y -qq libpam-google-authenticator
 success "libpam-google-authenticator installed."
 
@@ -369,9 +399,9 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 6 — SSH Hardening
+#  SECTION 7 — SSH Hardening
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 6 — SSH Hardening"
+header "SECTION 7 — SSH Hardening"
 
 # Back up the original config
 SSHD_BACKUP="/etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S)"
@@ -397,7 +427,7 @@ LogLevel VERBOSE
 # ── Authentication ────────────────────────────────────────────────────────────
 LoginGraceTime 1m
 PermitRootLogin no
-MaxAuthTries 6
+MaxAuthTries 3
 MaxSessions 2
 
 # Public key authentication
@@ -463,9 +493,9 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 7 — UFW Firewall
+#  SECTION 8 — UFW Firewall
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 7 — UFW Firewall"
+header "SECTION 8 — UFW Firewall"
 
 apt-get install -y -qq ufw
 
@@ -489,10 +519,13 @@ echo ""
 ufw status verbose
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 8 — fail2ban
+#  SECTION 9 — fail2ban
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 8 — fail2ban"
+header "SECTION 9 — fail2ban"
 apt-get install -y -qq fail2ban
+
+# Copy jail.conf to jail.local so package updates don't overwrite our config
+cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
 
 # Write a local jail config for SSH
 cat > /etc/fail2ban/jail.d/sshd-hardened.conf <<EOF
@@ -510,11 +543,12 @@ systemctl enable fail2ban > /dev/null
 systemctl restart fail2ban
 success "fail2ban installed and configured."
 info "SSH jail: 4 failed attempts within 10 minutes = 1 hour ban."
+success "jail.local created — your config is protected from package updates."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 9 — Automatic Security Updates
+#  SECTION 10 — Automatic Security Updates
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 9 — Automatic Security Updates"
+header "SECTION 10 — Automatic Security Updates"
 apt-get install -y -qq unattended-upgrades
 
 cat > /etc/apt/apt.conf.d/50unattended-upgrades <<'EOF'
@@ -538,9 +572,9 @@ systemctl restart unattended-upgrades
 success "Automatic security updates enabled (daily, no automatic reboots)."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 10 — sysctl Network Hardening
+#  SECTION 11 — sysctl Network Hardening
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 10 — sysctl Network Hardening"
+header "SECTION 11 — sysctl Network Hardening"
 
 SYSCTL_CONF="/etc/sysctl.d/99-hardening.conf"
 
@@ -587,15 +621,59 @@ net.ipv4.conf.default.log_martians = 1
 # ── Kernel pointer hiding ─────────────────────────────────────────────────────
 kernel.kptr_restrict = 2
 kernel.dmesg_restrict = 1
+
+# ── Additional kernel hardening (lynis KRNL-6000) ─────────────────────────────
+dev.tty.ldisc_autoload = 0
+fs.protected_fifos = 2
+kernel.perf_event_paranoid = 3
+kernel.sysrq = 0
+kernel.unprivileged_bpf_disabled = 1
 EOF
 
 sysctl -e -p "$SYSCTL_CONF" > /dev/null
 success "sysctl network hardening applied from $SYSCTL_CONF"
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 11 — Idle Session Timeout
+#  SECTION 12 — System Hardening
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 11 — Idle Session Timeout (${IDLE_MINUTES} minutes)"
+header "SECTION 12 — System Hardening"
+
+# ── Blacklist unused kernel modules ───────────────────────────────────────────
+cat > /etc/modprobe.d/disable-unused.conf <<'EOF'
+# Disable unused network protocols (lynis NETW-3200)
+install dccp  /bin/true
+install sctp  /bin/true
+install rds   /bin/true
+install tipc  /bin/true
+
+# Disable USB storage — prevents unauthorized data transfer (lynis USB-1000)
+install usb-storage /bin/true
+EOF
+success "Unused kernel modules blacklisted (dccp, sctp, rds, tipc, usb-storage)."
+
+# ── Disable core dumps ────────────────────────────────────────────────────────
+cat >> /etc/security/limits.conf <<'EOF'
+
+# Disable core dumps — managed by ubuntu-hardening.sh (lynis KRNL-5820)
+* hard core 0
+* soft core 0
+EOF
+success "Core dumps disabled in /etc/security/limits.conf."
+
+# ── Harden cron directory permissions ─────────────────────────────────────────
+for dir in /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.weekly /etc/cron.monthly; do
+    [ -d "$dir" ] && chmod 700 "$dir"
+done
+success "Cron directory permissions set to 700."
+
+# ── Tighten sshd_config permissions ───────────────────────────────────────────
+chmod 600 /etc/ssh/sshd_config
+success "/etc/ssh/sshd_config permissions set to 600."
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 13 — Idle Session Timeout
+# ══════════════════════════════════════════════════════════════════════════════
+header "SECTION 13 — Idle Session Timeout (${IDLE_MINUTES} minutes)"
 
 IDLE_SECONDS=$(( IDLE_MINUTES * 60 ))
 
@@ -610,17 +688,45 @@ chmod 644 /etc/profile.d/idle-timeout.sh
 success "Idle timeout set: sessions will be disconnected after ${IDLE_MINUTES} minutes of inactivity."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 13 — Timezone
+#  SECTION 14 — Timezone
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 12 — Timezone"
+header "SECTION 14 — Timezone"
 
 timedatectl set-timezone "$TIMEZONE"
 success "Timezone set to: $(timedatectl show --property=Timezone --value)"
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 13 — fastfetch
+#  SECTION 15 — Legal Banners
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 13 — fastfetch"
+header "SECTION 15 — Legal Banners"
+
+BANNER_TEXT="*******************************************************************************
+* WARNING: Authorized access only.                                           *
+* All activity on this system may be monitored and recorded.                 *
+* Unauthorized access is strictly prohibited and may result in legal action. *
+*******************************************************************************"
+
+echo "$BANNER_TEXT" > /etc/issue
+echo "$BANNER_TEXT" > /etc/issue.net
+success "Legal warning banner written to /etc/issue and /etc/issue.net."
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 16 — Postfix Hardening
+# ══════════════════════════════════════════════════════════════════════════════
+header "SECTION 16 — Postfix Hardening"
+
+if command -v postconf &>/dev/null; then
+    postconf -e 'smtpd_banner = $myhostname ESMTP'
+    systemctl restart postfix 2>/dev/null || true
+    success "Postfix SMTP banner hardened — OS info removed (lynis MAIL-8818)."
+else
+    info "Postfix not found — skipping SMTP banner hardening."
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SECTION 17 — fastfetch
+# ══════════════════════════════════════════════════════════════════════════════
+header "SECTION 17 — fastfetch"
 
 apt-get install -y -qq fastfetch 2>/dev/null || {
     info "fastfetch not in apt repos — downloading latest release from GitHub..."
@@ -662,9 +768,9 @@ fi
 success "fastfetch added to .bashrc for root, $NEW_USER, and all future users."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 14 — update.sh maintenance script
+#  SECTION 18 — update.sh maintenance script
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 14 — update.sh"
+header "SECTION 18 — update.sh"
 
 UPDATE_SCRIPT="/home/$NEW_USER/update.sh"
 
@@ -720,9 +826,9 @@ success "update.sh created at $UPDATE_SCRIPT"
 success "Permissions set: -rwxr--r-- (744)"
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 15 — Hostname
+#  SECTION 19 — Hostname
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 15 — Hostname"
+header "SECTION 19 — Hostname"
 
 if [[ -n "$NEW_HOSTNAME" ]]; then
     OLD_HOSTNAME=$(hostname)
@@ -739,17 +845,17 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 16 — lnav
+#  SECTION 20 — lnav
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 16 — lnav log viewer"
+header "SECTION 20 — lnav log viewer"
 
 apt-get install -y -qq lnav
 success "lnav installed. Use 'lnav <logfile>' to browse logs interactively."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 17 — Shell customisations
+#  SECTION 21 — Shell customisations
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 17 — Shell customisations"
+header "SECTION 21 — Shell customisations"
 
 # ── Install fzf ───────────────────────────────────────────────────────────────
 apt-get install -y -qq fzf
@@ -828,36 +934,23 @@ success "Shell customisations written to $SHELL_CUSTOM"
 success "ls alias, cat→bat alias, fzf, cd function, extract() active for all users on next login."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 18 — lynis
+#  SECTION 22 — lynis
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 18 — lynis security auditing"
+header "SECTION 22 — lynis security auditing"
 
 apt-get install -y -qq lynis
-success "lynis installed. Run 'sudo lynis audit system' at any time for a full security audit."
+success "lynis installed."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 19 — Restart SSH
+#  SECTION 23 — Restart SSH
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 19 — Restarting SSH"
+header "SECTION 23 — Restarting SSH"
 
 if sshd -t; then
     systemctl restart ssh
     success "SSH service restarted successfully."
 else
     error "sshd_config test failed — SSH was NOT restarted. Check the config manually."
-fi
-
-# ── Optional: run initial lynis scan ─────────────────────────────────────────
-echo ""
-if yes_no "Run an initial lynis security audit now? (takes ~1-2 minutes)"; then
-    header "lynis — Initial Security Audit"
-    info "Running lynis audit... results will appear below and in the log file."
-    echo ""
-    lynis audit system --quiet
-    echo ""
-    success "lynis audit complete."
-    info "Full report: /var/log/lynis-report.dat"
-    info "Full log:    /var/log/lynis.log"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -876,9 +969,12 @@ echo -e "  ${BOLD}Auth method:${NC}        $([ "$GA_CHOICE" = "1" ] && echo "SSH
 echo -e "  ${BOLD}Root login:${NC}         Disabled"
 echo -e "  ${BOLD}Password login:${NC}     Disabled"
 echo -e "  ${BOLD}Firewall (UFW):${NC}        Active — inbound port $SSH_PORT only"
-echo -e "  ${BOLD}fail2ban:${NC}              Active"
+echo -e "  ${BOLD}fail2ban:${NC}              Active (jail.local protected)"
 echo -e "  ${BOLD}Auto security updates:${NC} Active"
-echo -e "  ${BOLD}sysctl hardening:${NC}      Applied"
+echo -e "  ${BOLD}sysctl hardening:${NC}      Applied (incl. 5 new kernel keys)"
+echo -e "  ${BOLD}System hardening:${NC}      Modules blacklisted, core dumps off, perms tightened"
+echo -e "  ${BOLD}Legal banners:${NC}         /etc/issue + /etc/issue.net"
+echo -e "  ${BOLD}Postfix banner:${NC}        Hardened"
 echo -e "  ${BOLD}Idle timeout:${NC}          ${IDLE_MINUTES} minutes"
 echo -e "  ${BOLD}Timezone:${NC}              $TIMEZONE"
 echo -e "  ${BOLD}Hostname:${NC}              $([ -n "$NEW_HOSTNAME" ] && echo "$NEW_HOSTNAME" || echo "$(hostname) (unchanged)")"
@@ -886,7 +982,7 @@ echo -e "  ${BOLD}Login banner:${NC}          Suppressed (hushlogin)"
 echo -e "  ${BOLD}fastfetch:${NC}             Installed"
 echo -e "  ${BOLD}lnav:${NC}                  Installed"
 echo -e "  ${BOLD}Shell customisations:${NC}  ls alias, cat→$BAT_CMD, fzf, cd function, extract() → /etc/profile.d/custom-shell.sh"
-echo -e "  ${BOLD}lynis:${NC}                 Installed (run: sudo lynis audit system)"
+echo -e "  ${BOLD}lynis:${NC}                 Installed"
 echo -e "  ${BOLD}update.sh:${NC}             /home/$NEW_USER/update.sh (chmod 744)"
 echo ""
 echo -e "  ${BOLD}SSH command to connect:${NC}"
@@ -920,4 +1016,16 @@ echo -e "  ${RED}Only close this session after you confirm SSH login works.${NC}
 echo ""
 echo -e "  ${BOLD}Full run log saved to:${NC}"
 echo -e "    ${CYAN}$LOG_FILE${NC}"
+echo ""
+echo -e "${BOLD}${YELLOW}══════════════════════════════════════════════════════${NC}"
+echo -e "${BOLD}${YELLOW}  🔍  Next step: run your initial lynis security audit${NC}"
+echo -e "${BOLD}${YELLOW}══════════════════════════════════════════════════════${NC}"
+echo ""
+echo "  Once you have confirmed SSH access, run:"
+echo ""
+echo -e "    ${CYAN}sudo lynis audit system${NC}"
+echo ""
+echo "  Reports will be saved to:"
+echo "    /var/log/lynis.log        (full detail — browse with: lnav /var/log/lynis.log)"
+echo "    /var/log/lynis-report.dat (machine-readable)"
 echo ""
