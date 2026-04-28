@@ -301,13 +301,26 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
     debsums \
     apt-show-versions \
     libpam-pwquality \
-    acct
+    acct \
+    sysstat \
+    auditd
 success "Security packages installed."
 
-# Enable process accounting (audit trail of all commands run on the system)
+# Enable process accounting
 systemctl enable acct > /dev/null 2>&1 || true
 systemctl start  acct > /dev/null 2>&1 || true
 success "Process accounting (acct) enabled."
+
+# Enable sysstat — collects system performance metrics (lynis ACCT-9626)
+sed -i 's/^ENABLED="false"/ENABLED="true"/' /etc/default/sysstat 2>/dev/null || true
+systemctl enable sysstat > /dev/null 2>&1 || true
+systemctl start  sysstat > /dev/null 2>&1 || true
+success "sysstat enabled."
+
+# Enable auditd — kernel-level audit logging (lynis ACCT-9628)
+systemctl enable auditd > /dev/null 2>&1 || true
+systemctl start  auditd > /dev/null 2>&1 || true
+success "auditd enabled."
 
 # Stricter default umask: new files created as 640, directories as 750
 sed -i 's/^UMASK\s\+022/UMASK\t\t027/' /etc/login.defs
@@ -659,15 +672,21 @@ cat >> /etc/security/limits.conf <<'EOF'
 EOF
 success "Core dumps disabled in /etc/security/limits.conf."
 
-# ── Harden cron directory permissions ─────────────────────────────────────────
+# ── Harden cron directory and file permissions ────────────────────────────────
 for dir in /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.weekly /etc/cron.monthly; do
     [ -d "$dir" ] && chmod 700 "$dir"
 done
-success "Cron directory permissions set to 700."
+chmod 600 /etc/crontab
+success "Cron permissions set: directories 700, /etc/crontab 600."
 
 # ── Tighten sshd_config permissions ───────────────────────────────────────────
 chmod 600 /etc/ssh/sshd_config
 success "/etc/ssh/sshd_config permissions set to 600."
+
+# ── Force-apply log_martians — reverts on LXC reboot without this ─────────────
+sysctl -e -w net.ipv4.conf.all.log_martians=1     > /dev/null 2>&1 || true
+sysctl -e -w net.ipv4.conf.default.log_martians=1 > /dev/null 2>&1 || true
+success "log_martians force-applied for current session."
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  SECTION 13 — Idle Session Timeout
@@ -974,8 +993,10 @@ echo -e "  ${BOLD}Password login:${NC}     Disabled"
 echo -e "  ${BOLD}Firewall (UFW):${NC}        Active — inbound port $SSH_PORT only"
 echo -e "  ${BOLD}fail2ban:${NC}              Active (jail.local protected)"
 echo -e "  ${BOLD}Auto security updates:${NC} Active"
+echo -e "  ${BOLD}sysstat:${NC}               Active (lynis ACCT-9626)"
+echo -e "  ${BOLD}auditd:${NC}                Active (lynis ACCT-9628)"
 echo -e "  ${BOLD}sysctl hardening:${NC}      Applied (incl. 5 new kernel keys)"
-echo -e "  ${BOLD}System hardening:${NC}      Modules blacklisted, core dumps off, perms tightened"
+echo -e "  ${BOLD}System hardening:${NC}      Modules blacklisted, core dumps off, crontab+dirs+sshd_config perms tightened"
 echo -e "  ${BOLD}Legal banners:${NC}         /etc/issue + /etc/issue.net"
 echo -e "  ${BOLD}Postfix banner:${NC}        Hardened"
 echo -e "  ${BOLD}Idle timeout:${NC}          ${IDLE_MINUTES} minutes"
