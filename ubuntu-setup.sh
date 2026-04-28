@@ -5,11 +5,11 @@
 #  Must be run as root.
 #
 #  Usage — wget is pre-installed on Ubuntu Server, no setup needed:
-#    bash <(wget -qO- https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-hardening.sh)
+#    bash <(wget -qO- https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-setup.sh.sh)
 #
 #
 #  Alternative (if curl is already installed):
-#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-hardening.sh)
+#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-setup.sh)
 # ══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -116,7 +116,7 @@ echo "    12. Install fastfetch"
 echo "    13. Create update.sh maintenance script"
 echo "    14. Set server hostname"
 echo "    15. Install lnav log viewer"
-echo "    16. Apply shell customisations (ls alias, extract function)"
+echo "    16. Apply shell customisations (ls alias, extract function, fzf, bat)"
 echo ""
 echo -e "  ${RED}Run this on a fresh installation only.${NC}"
 echo -e "  ${RED}Keep your current session open until you confirm SSH works.${NC}"
@@ -750,9 +750,26 @@ success "lnav installed. Use 'lnav <logfile>' to browse logs interactively."
 # ══════════════════════════════════════════════════════════════════════════════
 header "SECTION 17 — Shell customisations"
 
+# ── Install fzf ───────────────────────────────────────────────────────────────
+apt-get install -y -qq fzf
+success "fzf installed."
+
+# ── Install bat ───────────────────────────────────────────────────────────────
+apt-get install -y -qq bat 2>/dev/null || apt-get install -y -qq batcat 2>/dev/null || true
+# Ubuntu 24.04 uses 'bat'; older versions ship it as 'batcat' — detect which landed
+if command -v bat &>/dev/null; then
+    BAT_CMD="bat"
+elif command -v batcat &>/dev/null; then
+    BAT_CMD="batcat"
+else
+    BAT_CMD=""
+    warn "bat could not be installed — cat alias will be skipped."
+fi
+[[ -n "$BAT_CMD" ]] && success "bat installed (command: '$BAT_CMD')."
+
 SHELL_CUSTOM="/etc/profile.d/custom-shell.sh"
 
-cat > "$SHELL_CUSTOM" <<'EOF'
+cat > "$SHELL_CUSTOM" <<EOF
 # ══════════════════════════════════════════════════════════════════════════════
 #  /etc/profile.d/custom-shell.sh
 #  Applied to all users on every login — managed by ubuntu-hardening.sh
@@ -761,34 +778,44 @@ cat > "$SHELL_CUSTOM" <<'EOF'
 # ── ls alias ──────────────────────────────────────────────────────────────────
 alias ls='/bin/ls -lahF --time-style=long-iso --color=auto --ignore=lost+found'
 
+# ── bat alias (replaces cat) ──────────────────────────────────────────────────
+$([ -n "$BAT_CMD" ] && echo "alias cat='$BAT_CMD'" || echo "# bat not available — alias skipped")
+
+# ── fzf (fuzzy finder — enhances Ctrl+R history search and file completion) ───
+$([ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && \
+    echo "source /usr/share/doc/fzf/examples/key-bindings.bash" || \
+    echo "# fzf key bindings not found at expected path — run 'eval \"\$(fzf --bash)\"' manually")
+$([ -f /usr/share/doc/fzf/examples/completion.bash ] && \
+    echo "source /usr/share/doc/fzf/examples/completion.bash" || true)
+
 # ── extract — universal archive extractor ─────────────────────────────────────
 function extract () {
-  if [ -f "$1" ] ; then
-    case $1 in
-      *.tar.bz2)   tar xjvf "$1"    ;;
-      *.tar.gz)    tar xzvf "$1"    ;;
-      *.tar.xz)    tar xvf  "$1"    ;;
-      *.bz2)       bzip2 -d "$1"    ;;
-      *.rar)       unrar2dir "$1"   ;;
-      *.gz)        gunzip "$1"      ;;
-      *.tar)       tar xf "$1"      ;;
-      *.tbz2)      tar xjf "$1"     ;;
-      *.tgz)       tar xzf "$1"     ;;
-      *.zip)       unzip2dir "$1"   ;;
-      *.Z)         uncompress "$1"  ;;
-      *.7z)        7z x "$1"        ;;
-      *.ace)       unace x "$1"     ;;
-      *)           echo "'$1' cannot be extracted via extract()" ;;
+  if [ -f "\$1" ] ; then
+    case \$1 in
+      *.tar.bz2)   tar xjvf "\$1"    ;;
+      *.tar.gz)    tar xzvf "\$1"    ;;
+      *.tar.xz)    tar xvf  "\$1"    ;;
+      *.bz2)       bzip2 -d "\$1"    ;;
+      *.rar)       unrar2dir "\$1"   ;;
+      *.gz)        gunzip "\$1"      ;;
+      *.tar)       tar xf "\$1"      ;;
+      *.tbz2)      tar xjf "\$1"     ;;
+      *.tgz)       tar xzf "\$1"     ;;
+      *.zip)       unzip2dir "\$1"   ;;
+      *.Z)         uncompress "\$1"  ;;
+      *.7z)        7z x "\$1"        ;;
+      *.ace)       unace x "\$1"     ;;
+      *)           echo "'\$1' cannot be extracted via extract()" ;;
     esac
   else
-    echo "'$1' is not a valid file"
+    echo "'\$1' is not a valid file"
   fi
 }
 EOF
 
 chmod 644 "$SHELL_CUSTOM"
 success "Shell customisations written to $SHELL_CUSTOM"
-success "ls alias and extract() function active for all users on next login."
+success "ls alias, cat→bat alias, fzf, and extract() active for all users on next login."
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  SECTION 18 — Restart SSH
@@ -827,7 +854,7 @@ echo -e "  ${BOLD}Hostname:${NC}              $([ -n "$NEW_HOSTNAME" ] && echo "
 echo -e "  ${BOLD}Login banner:${NC}          Suppressed (hushlogin)"
 echo -e "  ${BOLD}fastfetch:${NC}             Installed"
 echo -e "  ${BOLD}lnav:${NC}                  Installed"
-echo -e "  ${BOLD}Shell customisations:${NC}  ls alias + extract() → /etc/profile.d/custom-shell.sh"
+echo -e "  ${BOLD}Shell customisations:${NC}  ls alias, cat→$BAT_CMD, fzf, extract() → /etc/profile.d/custom-shell.sh"
 echo -e "  ${BOLD}update.sh:${NC}             /home/$NEW_USER/update.sh (chmod 744)"
 echo ""
 echo -e "  ${BOLD}SSH command to connect:${NC}"
