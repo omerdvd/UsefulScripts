@@ -296,7 +296,6 @@ header "SECTION 3 — Security Packages"
 info "Installing recommended security packages..."
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
     libpam-tmpdir \
-    apt-listbugs \
     apt-listchanges \
     needrestart \
     debsums \
