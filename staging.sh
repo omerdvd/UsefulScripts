@@ -5,13 +5,11 @@
 #  Must be run as root.
 #
 #  Usage — wget is pre-installed on Ubuntu Server, no setup needed:
-#    bash <(wget -qO- https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/staging.sh)
+#    bash <(wget -qO- https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-hardening.sh)
 #
-#  NOTE: Do NOT use "wget ... | bash" — piping breaks the interactive prompts.
-#        Always use bash <(...) process substitution.
 #
 #  Alternative (if curl is already installed):
-#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/staging.sh)
+#    bash <(curl -fsSL https://raw.githubusercontent.com/omerdvd/UsefulScripts/refs/heads/main/ubuntu-hardening.sh)
 # ══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -118,8 +116,8 @@ echo "    12. Install fastfetch"
 echo "    13. Create update.sh maintenance script"
 echo "    14. Set server hostname"
 echo "    15. Install lnav log viewer"
-echo "    16. Apply shell customisations (ls alias, extract function)"
-echo "    17. Configure shell (bash / zsh)"
+echo "    16. Apply shell customisations (ls alias, extract function, fzf, bat)"
+echo "    17. Install ble.sh (bash syntax highlighting — easy to remove)"
 echo ""
 echo -e "  ${RED}Run this on a fresh installation only.${NC}"
 echo -e "  ${RED}Keep your current session open until you confirm SSH works.${NC}"
@@ -259,36 +257,6 @@ done
 
 IDLE_MINUTES=10
 
-# ── Shell choice ──────────────────────────────────────────────────────────────
-echo ""
-echo -e "${CYAN}[?]${NC}   Which shell do you want to use?"
-echo "      1) bash  — keep the default Ubuntu shell"
-echo "      2) zsh   — Z shell with optional plugins"
-while true; do
-    read -rp "$(echo -e "${CYAN}[INPUT]${NC} Choice [1/2]: ")" SHELL_CHOICE
-    case "$SHELL_CHOICE" in
-        1) SHELL_CHOICE="bash"; break ;;
-        2) SHELL_CHOICE="zsh";  break ;;
-        *) warn "Please enter 1 or 2." ;;
-    esac
-done
-
-ZSH_PLUGINS="no"
-if [[ "$SHELL_CHOICE" == "zsh" ]]; then
-    echo ""
-    echo -e "${CYAN}[?]${NC}   Do you want vanilla zsh or zsh with plugins?"
-    echo "      1) Vanilla zsh — clean shell, no extras"
-    echo "      2) With plugins — autosuggestions, syntax highlighting, bat, oh-my-posh (nu4a theme)"
-    while true; do
-        read -rp "$(echo -e "${CYAN}[INPUT]${NC} Choice [1/2]: ")" ZSH_OPT
-        case "$ZSH_OPT" in
-            1) ZSH_PLUGINS="no";  break ;;
-            2) ZSH_PLUGINS="yes"; break ;;
-            *) warn "Please enter 1 or 2." ;;
-        esac
-    done
-fi
-
 # ── Summary before applying ───────────────────────────────────────────────────
 echo ""
 header "Configuration Summary"
@@ -296,7 +264,6 @@ echo -e "  Username:              ${BOLD}$NEW_USER${NC}"
 echo -e "  SSH port:              ${BOLD}$SSH_PORT${NC}"
 echo -e "  Timezone:              ${BOLD}$TIMEZONE${NC}"
 echo -e "  Hostname:              ${BOLD}${NEW_HOSTNAME:-$(hostname) (unchanged)}${NC}"
-echo -e "  Shell:                 ${BOLD}$([ "$SHELL_CHOICE" = "zsh" ] && echo "zsh (plugins: $ZSH_PLUGINS)" || echo "bash (unchanged)")${NC}"
 echo -e "  Google Auth (2FA):     ${BOLD}$([ "$GA_CHOICE" = "1" ] && echo "Configure now" || echo "Configure later")${NC}"
 echo -e "  fail2ban:              ${BOLD}Yes${NC}"
 echo -e "  Auto security updates: ${BOLD}Yes${NC}"
@@ -670,33 +637,29 @@ apt-get install -y -qq fastfetch 2>/dev/null || {
 }
 success "fastfetch installed."
 
+# Add fastfetch to /etc/skel/.bashrc so all future users get it automatically
 FASTFETCH_LINE="fastfetch  # added by ubuntu-hardening.sh"
+SKEL_BASHRC="/etc/skel/.bashrc"
+if ! grep -q "fastfetch" "$SKEL_BASHRC" 2>/dev/null; then
+    echo "" >> "$SKEL_BASHRC"
+    echo "$FASTFETCH_LINE" >> "$SKEL_BASHRC"
+fi
 
-# Always add to root's .bashrc (root stays on bash)
+# Add to root's .bashrc
 ROOT_BASHRC="/root/.bashrc"
 if ! grep -q "fastfetch" "$ROOT_BASHRC" 2>/dev/null; then
     echo "" >> "$ROOT_BASHRC"
     echo "$FASTFETCH_LINE" >> "$ROOT_BASHRC"
 fi
 
-if [[ "$SHELL_CHOICE" == "bash" ]]; then
-    # Add to /etc/skel/.bashrc for future users
-    SKEL_BASHRC="/etc/skel/.bashrc"
-    if ! grep -q "fastfetch" "$SKEL_BASHRC" 2>/dev/null; then
-        echo "" >> "$SKEL_BASHRC"
-        echo "$FASTFETCH_LINE" >> "$SKEL_BASHRC"
-    fi
-    # Add to the new user's .bashrc
-    USER_BASHRC="/home/$NEW_USER/.bashrc"
-    if ! grep -q "fastfetch" "$USER_BASHRC" 2>/dev/null; then
-        echo "" >> "$USER_BASHRC"
-        echo "$FASTFETCH_LINE" >> "$USER_BASHRC"
-    fi
-    success "fastfetch added to .bashrc for root, $NEW_USER, and all future users."
-else
-    # zsh — fastfetch will be written into .zshrc by the zsh section
-    success "fastfetch added to root's .bashrc. Will be added to $NEW_USER's .zshrc in the zsh section."
+# Add to the new user's .bashrc
+USER_BASHRC="/home/$NEW_USER/.bashrc"
+if ! grep -q "fastfetch" "$USER_BASHRC" 2>/dev/null; then
+    echo "" >> "$USER_BASHRC"
+    echo "$FASTFETCH_LINE" >> "$USER_BASHRC"
 fi
+
+success "fastfetch added to .bashrc for root, $NEW_USER, and all future users."
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  SECTION 14 — update.sh maintenance script
@@ -788,9 +751,26 @@ success "lnav installed. Use 'lnav <logfile>' to browse logs interactively."
 # ══════════════════════════════════════════════════════════════════════════════
 header "SECTION 17 — Shell customisations"
 
+# ── Install fzf ───────────────────────────────────────────────────────────────
+apt-get install -y -qq fzf
+success "fzf installed."
+
+# ── Install bat ───────────────────────────────────────────────────────────────
+apt-get install -y -qq bat 2>/dev/null || apt-get install -y -qq batcat 2>/dev/null || true
+# Ubuntu 24.04 uses 'bat'; older versions ship it as 'batcat' — detect which landed
+if command -v bat &>/dev/null; then
+    BAT_CMD="bat"
+elif command -v batcat &>/dev/null; then
+    BAT_CMD="batcat"
+else
+    BAT_CMD=""
+    warn "bat could not be installed — cat alias will be skipped."
+fi
+[[ -n "$BAT_CMD" ]] && success "bat installed (command: '$BAT_CMD')."
+
 SHELL_CUSTOM="/etc/profile.d/custom-shell.sh"
 
-cat > "$SHELL_CUSTOM" <<'EOF'
+cat > "$SHELL_CUSTOM" <<EOF
 # ══════════════════════════════════════════════════════════════════════════════
 #  /etc/profile.d/custom-shell.sh
 #  Applied to all users on every login — managed by ubuntu-hardening.sh
@@ -799,131 +779,91 @@ cat > "$SHELL_CUSTOM" <<'EOF'
 # ── ls alias ──────────────────────────────────────────────────────────────────
 alias ls='/bin/ls -lahF --time-style=long-iso --color=auto --ignore=lost+found'
 
+# ── bat alias (replaces cat) ──────────────────────────────────────────────────
+$([ -n "$BAT_CMD" ] && echo "alias cat='$BAT_CMD'" || echo "# bat not available — alias skipped")
+
+# ── fzf (fuzzy finder — enhances Ctrl+R history search and file completion) ───
+$([ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && \
+    echo "source /usr/share/doc/fzf/examples/key-bindings.bash" || \
+    echo "# fzf key bindings not found at expected path — run 'eval \"\$(fzf --bash)\"' manually")
+$([ -f /usr/share/doc/fzf/examples/completion.bash ] && \
+    echo "source /usr/share/doc/fzf/examples/completion.bash" || true)
+
 # ── extract — universal archive extractor ─────────────────────────────────────
 function extract () {
-  if [ -f "$1" ] ; then
-    case $1 in
-      *.tar.bz2)   tar xjvf "$1"    ;;
-      *.tar.gz)    tar xzvf "$1"    ;;
-      *.tar.xz)    tar xvf  "$1"    ;;
-      *.bz2)       bzip2 -d "$1"    ;;
-      *.rar)       unrar2dir "$1"   ;;
-      *.gz)        gunzip "$1"      ;;
-      *.tar)       tar xf "$1"      ;;
-      *.tbz2)      tar xjf "$1"     ;;
-      *.tgz)       tar xzf "$1"     ;;
-      *.zip)       unzip2dir "$1"   ;;
-      *.Z)         uncompress "$1"  ;;
-      *.7z)        7z x "$1"        ;;
-      *.ace)       unace x "$1"     ;;
-      *)           echo "'$1' cannot be extracted via extract()" ;;
+  if [ -f "\$1" ] ; then
+    case \$1 in
+      *.tar.bz2)   tar xjvf "\$1"    ;;
+      *.tar.gz)    tar xzvf "\$1"    ;;
+      *.tar.xz)    tar xvf  "\$1"    ;;
+      *.bz2)       bzip2 -d "\$1"    ;;
+      *.rar)       unrar2dir "\$1"   ;;
+      *.gz)        gunzip "\$1"      ;;
+      *.tar)       tar xf "\$1"      ;;
+      *.tbz2)      tar xjf "\$1"     ;;
+      *.tgz)       tar xzf "\$1"     ;;
+      *.zip)       unzip2dir "\$1"   ;;
+      *.Z)         uncompress "\$1"  ;;
+      *.7z)        7z x "\$1"        ;;
+      *.ace)       unace x "\$1"     ;;
+      *)           echo "'\$1' cannot be extracted via extract()" ;;
     esac
   else
-    echo "'$1' is not a valid file"
+    echo "'\$1' is not a valid file"
   fi
 }
 EOF
 
 chmod 644 "$SHELL_CUSTOM"
 success "Shell customisations written to $SHELL_CUSTOM"
-success "ls alias and extract() function active for all users on next login."
+success "ls alias, cat→bat alias, fzf, and extract() active for all users on next login."
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 18 — Shell setup
+#  SECTION 18 — ble.sh (bash syntax highlighting)
 # ══════════════════════════════════════════════════════════════════════════════
-header "SECTION 18 — Shell setup ($SHELL_CHOICE)"
+header "SECTION 18 — ble.sh"
 
-if [[ "$SHELL_CHOICE" == "zsh" ]]; then
+info "Installing ble.sh from GitHub..."
 
-    apt-get install -y -qq zsh
-    success "zsh installed."
+# Download and extract the latest release to /usr/local/share/blesh
+BLESH_URL=$(curl -fsSL https://api.github.com/repos/akinomyoga/ble.sh/releases/latest \
+    | grep "browser_download_url" \
+    | grep "\.tar\.xz" \
+    | head -1 \
+    | cut -d'"' -f4)
 
-    # Set zsh as the default shell for the new user
-    usermod -s /bin/zsh "$NEW_USER"
-    success "Default shell for $NEW_USER set to zsh."
-
-    USER_ZSHRC="/home/$NEW_USER/.zshrc"
-
-    if [[ "$ZSH_PLUGINS" == "yes" ]]; then
-
-        info "Installing zsh plugins..."
-
-        # ── zsh-autosuggestions ────────────────────────────────────────────────
-        apt-get install -y -qq zsh-autosuggestions
-        success "zsh-autosuggestions installed."
-
-        # ── zsh-syntax-highlighting ────────────────────────────────────────────
-        apt-get install -y -qq zsh-syntax-highlighting
-        success "zsh-syntax-highlighting installed."
-
-        # ── bat ────────────────────────────────────────────────────────────────
-        apt-get install -y -qq bat 2>/dev/null || apt-get install -y -qq batcat 2>/dev/null || true
-        # Ubuntu 24.04 uses 'bat'; older versions use 'batcat' — detect which one landed
-        if command -v bat &>/dev/null; then
-            BAT_CMD="bat"
-        elif command -v batcat &>/dev/null; then
-            BAT_CMD="batcat"
-        else
-            BAT_CMD=""
-            warn "bat could not be installed — skipping cat alias."
-        fi
-        [[ -n "$BAT_CMD" ]] && success "bat installed as '$BAT_CMD'."
-
-        # ── oh-my-posh ────────────────────────────────────────────────────────
-        info "Installing oh-my-posh..."
-        curl -fsSL https://github.com/JanDeDobbeleer/oh-my-posh/releases/latest/download/posh-linux-amd64 \
-            -o /usr/local/bin/oh-my-posh
-        chmod +x /usr/local/bin/oh-my-posh
-        success "oh-my-posh installed."
-
-        # Download nu4a theme
-        OMP_THEME_DIR="/home/$NEW_USER/.config/ohmyposh"
-        mkdir -p "$OMP_THEME_DIR"
-        curl -fsSL "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/nu4a.omp.json" \
-            -o "$OMP_THEME_DIR/nu4a.omp.json"
-        chown -R "$NEW_USER:$NEW_USER" "/home/$NEW_USER/.config"
-        success "oh-my-posh theme 'nu4a' downloaded."
-
-        # ── Write .zshrc with plugins ──────────────────────────────────────────
-        cat > "$USER_ZSHRC" <<EOF
-# ~/.zshrc — managed by ubuntu-hardening.sh
-# ══════════════════════════════════════════════════════════════════════════════
-
-# ── zsh-autosuggestions ───────────────────────────────────────────────────────
-source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-
-# ── zsh-syntax-highlighting (must be sourced last) ────────────────────────────
-source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-
-# ── bat alias ─────────────────────────────────────────────────────────────────
-$([ -n "$BAT_CMD" ] && echo "alias cat='$BAT_CMD'" || echo "# bat not available — alias skipped")
-
-# ── oh-my-posh ────────────────────────────────────────────────────────────────
-eval "\$(oh-my-posh init zsh --config ~/.config/ohmyposh/nu4a.omp.json)"
-
-# ── fastfetch ─────────────────────────────────────────────────────────────────
-fastfetch  # added by ubuntu-hardening.sh
-EOF
-        success "zsh configured with plugins: autosuggestions, syntax-highlighting, bat, oh-my-posh (nu4a)."
-
-    else
-        # ── Vanilla zsh .zshrc ─────────────────────────────────────────────────
-        cat > "$USER_ZSHRC" <<'EOF'
-# ~/.zshrc — managed by ubuntu-hardening.sh
-# ══════════════════════════════════════════════════════════════════════════════
-
-# ── fastfetch ─────────────────────────────────────────────────────────────────
-fastfetch  # added by ubuntu-hardening.sh
-EOF
-        success "Vanilla zsh configured."
-    fi
-
-    chown "$NEW_USER:$NEW_USER" "$USER_ZSHRC"
-    chmod 644 "$USER_ZSHRC"
-    success ".zshrc written to $USER_ZSHRC"
-
+if [[ -z "$BLESH_URL" ]]; then
+    warn "Could not fetch ble.sh release URL — skipping. Install manually later if needed."
 else
-    info "Shell choice is bash — no changes to user shell."
+    curl -fsSL "$BLESH_URL" -o /tmp/blesh.tar.xz
+    mkdir -p /usr/local/share/blesh
+    tar xJf /tmp/blesh.tar.xz -C /usr/local/share/blesh --strip-components=1
+    rm -f /tmp/blesh.tar.xz
+    success "ble.sh installed to /usr/local/share/blesh"
+
+    # Write its own isolated profile.d file — easy to remove if you don't like it
+    cat > /etc/profile.d/blesh.sh <<'EOF'
+# ══════════════════════════════════════════════════════════════════════════════
+#  /etc/profile.d/blesh.sh — ble.sh bash syntax highlighting
+#  Managed by ubuntu-hardening.sh
+#
+#  TO DISABLE BLE.SH: delete this file and log out/in
+#    sudo rm /etc/profile.d/blesh.sh
+#
+#  TO UNINSTALL COMPLETELY:
+#    sudo rm /etc/profile.d/blesh.sh
+#    sudo rm -rf /usr/local/share/blesh
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Only load in interactive bash shells
+if [ -n "$BASH_VERSION" ] && [[ $- == *i* ]]; then
+    [[ -f /usr/local/share/blesh/ble.sh ]] && source /usr/local/share/blesh/ble.sh --noattach
+fi
+EOF
+
+    chmod 644 /etc/profile.d/blesh.sh
+    success "ble.sh configured in /etc/profile.d/blesh.sh"
+    info "To remove ble.sh:  sudo rm /etc/profile.d/blesh.sh && sudo rm -rf /usr/local/share/blesh"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -963,8 +903,8 @@ echo -e "  ${BOLD}Hostname:${NC}              $([ -n "$NEW_HOSTNAME" ] && echo "
 echo -e "  ${BOLD}Login banner:${NC}          Suppressed (hushlogin)"
 echo -e "  ${BOLD}fastfetch:${NC}             Installed"
 echo -e "  ${BOLD}lnav:${NC}                  Installed"
-echo -e "  ${BOLD}Shell customisations:${NC}  ls alias + extract() → /etc/profile.d/custom-shell.sh"
-echo -e "  ${BOLD}Shell:${NC}                 $([ "$SHELL_CHOICE" = "zsh" ] && echo "zsh (plugins: $ZSH_PLUGINS)" || echo "bash (unchanged)")"
+echo -e "  ${BOLD}Shell customisations:${NC}  ls alias, cat→$BAT_CMD, fzf, extract() → /etc/profile.d/custom-shell.sh"
+echo -e "  ${BOLD}ble.sh:${NC}                Installed → /etc/profile.d/blesh.sh (remove to disable)"
 echo -e "  ${BOLD}update.sh:${NC}             /home/$NEW_USER/update.sh (chmod 744)"
 echo ""
 echo -e "  ${BOLD}SSH command to connect:${NC}"
